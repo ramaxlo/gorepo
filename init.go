@@ -141,5 +141,16 @@ func cmdInit(ctx *cli.Context) error {
 		dumpManifest(&m)
 	}
 
+	cfg := Config{
+		Manifest: ManifestInfo{
+			Path: "manifests",
+			File: fileName,
+		},
+	}
+	err = SaveConfig(&cfg)
+	if err != nil {
+		return fmt.Errorf("Fail to save config: %s", err)
+	}
+
 	return nil
 }
