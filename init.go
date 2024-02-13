@@ -138,7 +138,7 @@ func cmdInit(ctx *cli.Context) error {
 	}
 
 	if ctx.Bool("dump") {
-		dumpManifest(&m)
+		dumpManifest(m)
 	}
 
 	cfg := Config{

@@ -15,7 +15,7 @@ func init() {
 	ConfDir = filepath.Join(ProjectRoot, ".gorepo")
 }
 
-func loadManifest(filePath string) (manifest Manifest, err error) {
+func loadManifest(filePath string) (manifest *Manifest, err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		err = fmt.Errorf("Fail to open file: %s", err)
@@ -25,11 +25,14 @@ func loadManifest(filePath string) (manifest Manifest, err error) {
 
 	decoder := xml.NewDecoder(f)
 
-	err = decoder.Decode(&manifest)
+	var m Manifest
+	err = decoder.Decode(&m)
 	if err != nil {
 		err = fmt.Errorf("Fail to parse xml: %s", err)
 		return
 	}
+
+	manifest = &m
 
 	return
 }
