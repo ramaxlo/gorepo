@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -59,6 +60,31 @@ type syncJob struct {
 	err      error
 }
 
+func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) {
+	refs, _ := repo.References()
+	var found *plumbing.Reference
+
+	refs.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Type() != plumbing.HashReference {
+			return nil
+		}
+
+		refName := ref.Name()
+		if strings.HasSuffix(string(refName), name) {
+			found = ref
+			return nil
+		}
+
+		return nil
+	})
+
+	if found == nil {
+		return nil, fmt.Errorf("Branch '%s' not found", name)
+	}
+
+	return found, nil
+}
+
 func pullUpdate(path string, j syncJob) error {
 	repo, err := git.PlainOpen(path)
 	if err != nil {
@@ -70,15 +96,55 @@ func pullUpdate(path string, j syncJob) error {
 		Progress:   os.Stdout,
 	})
 	if err != nil {
-		return fmt.Errorf("Fail to fetch update: %s", err)
+		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return fmt.Errorf("Fail to fetch update: %s", err)
+		} else {
+			fmt.Printf("job %s up-to-date\n", j.path)
+		}
 	}
 
-	_, err = repo.Branch("manifest-rev")
+	remoteHash, err := parseRevision(repo, j.revision, j)
+	if err != nil {
+		return fmt.Errorf("Fail to parse revision: %s", err)
+	}
+
+	newBranchNeeded := false
+	localRef, err := findBranch(repo, "manifest-rev")
 	if err == nil {
-		repo.DeleteBranch("manifest-rev")
+		fmt.Printf("job %s: localRef: %s, remoteHash: %s\n", j.path, localRef.Hash().String(), remoteHash.String())
+		if localRef.Hash().String() != remoteHash.String() {
+			fmt.Printf("job %s: Remove local branch\n", j.path)
+			repo.Storer.RemoveReference(localRef.Name())
+			newBranchNeeded = true
+		}
+	} else {
+		fmt.Printf("job %s: %s\n", j.path, err)
+		newBranchNeeded = true
 	}
 
 	//TODO: Create new branch
+	if newBranchNeeded {
+		w, _ := repo.Worktree()
+
+		// Create new branch 'manifest-rev' pointing to the target revision
+		err = w.Checkout(&git.CheckoutOptions{
+			Hash:   remoteHash,
+			Branch: plumbing.ReferenceName("refs/heads/manifest-rev"),
+			Create: true,
+		})
+		if err != nil {
+			return fmt.Errorf("Fail to checkout worktree: %s", err)
+		}
+
+		// Checkout in detached mode
+		err = w.Checkout(&git.CheckoutOptions{
+			Hash:  remoteHash,
+			Force: true,
+		})
+		if err != nil {
+			return fmt.Errorf("Fail to checkout worktree: %s", err)
+		}
+	}
 
 	return nil
 }
@@ -105,7 +171,7 @@ func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Has
 		// If all rules are not matched, then we assume the string to be a branch
 		// name of a remote.
 		fullRevStr := fmt.Sprintf("refs/remotes/%s/%s", j.remote, revStr)
-		fmt.Printf("ref: %s\n", fullRevStr)
+		//fmt.Printf("ref: %s\n", fullRevStr)
 		tmp, err := repo.ResolveRevision(plumbing.Revision(fullRevStr))
 		if err != nil {
 			return plumbing.Hash{}, fmt.Errorf("Invalid remote branch: %s\n", fullRevStr)
