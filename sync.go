@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/hash"
+	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
@@ -58,6 +60,7 @@ type syncJob struct {
 	path     string
 	remote   string
 	err      error
+	log      *log.Entry
 }
 
 func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) {
@@ -86,6 +89,9 @@ func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) 
 }
 
 func pullUpdate(path string, j syncJob) error {
+	jlog := j.log
+
+	jlog.Info("Pull update")
 	repo, err := git.PlainOpen(path)
 	if err != nil {
 		return fmt.Errorf("Fail to open git repo: %s", err)
@@ -99,7 +105,7 @@ func pullUpdate(path string, j syncJob) error {
 		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
 			return fmt.Errorf("Fail to fetch update: %s", err)
 		} else {
-			fmt.Printf("job %s up-to-date\n", j.path)
+			jlog.Info("Remote up-to-date")
 		}
 	}
 
@@ -111,14 +117,14 @@ func pullUpdate(path string, j syncJob) error {
 	newBranchNeeded := false
 	localRef, err := findBranch(repo, "manifest-rev")
 	if err == nil {
-		fmt.Printf("job %s: localRef: %s, remoteHash: %s\n", j.path, localRef.Hash().String(), remoteHash.String())
+		jlog.Debugf("localRef: %s, remoteHash: %s", localRef.Hash().String(), remoteHash.String())
 		if localRef.Hash().String() != remoteHash.String() {
-			fmt.Printf("job %s: Remove local branch\n", j.path)
+			jlog.Debug("Remove local branch")
 			repo.Storer.RemoveReference(localRef.Name())
 			newBranchNeeded = true
 		}
 	} else {
-		fmt.Printf("job %s: %s\n", j.path, err)
+		jlog.Errorf("%s", err)
 		newBranchNeeded = true
 	}
 
@@ -158,12 +164,12 @@ func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Has
 		if len(b) == hash.HexSize {
 			h = plumbing.NewHash(revStr)
 		} else {
-			return plumbing.Hash{}, fmt.Errorf("Invalid hash format: %s\n", revStr)
+			return plumbing.Hash{}, fmt.Errorf("Invalid hash format: %s", revStr)
 		}
 	} else if strings.HasPrefix(revStr, "refs/tags") {
 		tmp, err := repo.ResolveRevision(plumbing.Revision(revStr))
 		if err != nil {
-			return plumbing.Hash{}, fmt.Errorf("Invalid tag: %s\n", revStr)
+			return plumbing.Hash{}, fmt.Errorf("Invalid tag: %s", revStr)
 		}
 		h = *tmp
 	} else {
@@ -174,7 +180,7 @@ func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Has
 		//fmt.Printf("ref: %s\n", fullRevStr)
 		tmp, err := repo.ResolveRevision(plumbing.Revision(fullRevStr))
 		if err != nil {
-			return plumbing.Hash{}, fmt.Errorf("Invalid remote branch: %s\n", fullRevStr)
+			return plumbing.Hash{}, fmt.Errorf("Invalid remote branch: %s", fullRevStr)
 		}
 		h = *tmp
 	}
@@ -183,13 +189,15 @@ func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Has
 }
 
 func cloneRepo(path string, j syncJob) error {
-	fmt.Println("repo init")
+	jlog := j.log
+
+	jlog.Info("Clone repo")
 	repo, err := git.PlainInit(path, false)
 	if err != nil {
 		return fmt.Errorf("Fail to init new repo: %s", err)
 	}
 
-	fmt.Println("create remote")
+	jlog.Debug("create remote")
 	_, err = repo.CreateRemote(&config.RemoteConfig{
 		Name: j.remote,
 		URLs: []string{j.repo},
@@ -198,7 +206,7 @@ func cloneRepo(path string, j syncJob) error {
 		return fmt.Errorf("Fail to create new remote: %s", err)
 	}
 
-	fmt.Println("fetch remote")
+	jlog.Debug("fetch remote")
 	err = repo.Fetch(&git.FetchOptions{
 		RemoteName: j.remote,
 		Progress:   os.Stdout,
@@ -207,7 +215,7 @@ func cloneRepo(path string, j syncJob) error {
 		return fmt.Errorf("Fail to fetch update: %s", err)
 	}
 
-	fmt.Println("create branch")
+	jlog.Debug("create branch")
 	w, _ := repo.Worktree()
 	h, err := parseRevision(repo, j.revision, j)
 	if err != nil {
@@ -250,23 +258,32 @@ func doJob(j syncJob) error {
 	return nil
 }
 
-func dumpJob(idx int, j syncJob) {
-	fmt.Printf("[WORKER %d] job %s, %s\n", idx, j.path, j.repo)
-}
-
-func worker(idx int, stopCh <-chan bool, jobCh <-chan syncJob, errCh chan<- syncJob, wg *sync.WaitGroup) {
+func worker(idx int, stopCh <-chan bool, jobCh <-chan syncJob, errCh chan<- syncJob, wg *sync.WaitGroup, logger *log.Entry) {
+	wlog := logger.WithFields(log.Fields{
+		"worker": idx,
+	})
 	defer wg.Done()
 
 	for {
 		select {
 		case <-stopCh:
-			fmt.Printf("[WORKER %d] exit\n", idx)
+			wlog.Debug("exit")
 			return
 		case j := <-jobCh:
-			dumpJob(idx, j)
+			jlog := wlog.WithFields(log.Fields{
+				"path":   j.path,
+				"remote": j.remote,
+			})
+			jlog.Debugf("Repo: %s", j.repo)
+
+			j.log = jlog
+			start := time.Now()
 			err := doJob(j)
+			dur := time.Since(start).Round(time.Second)
 			if err != nil {
-				fmt.Printf("[WORKER %d] Fail to do job: %s\n", idx, err)
+				jlog.Errorf("Fail to do job (dur %s): %s", dur, err)
+			} else {
+				jlog.Infof("Job done (dur %s)", dur)
 			}
 
 			j.err = err
@@ -339,12 +356,15 @@ func setupDirAll(j syncJob) {
 }
 
 func syncRepos(m *Manifest, numTasks int) error {
+	slog := log.WithFields(log.Fields{
+		"cmd": "sync",
+	})
 	stopCh := make(chan bool)
 	jobCh := make(chan syncJob)
 	errCh := make(chan syncJob)
 	var wg sync.WaitGroup
 	for i := 0; i < numTasks; i++ {
-		go worker(i, stopCh, jobCh, errCh, &wg)
+		go worker(i, stopCh, jobCh, errCh, &wg, slog)
 		wg.Add(1)
 	}
 	defer wg.Wait()
@@ -354,7 +374,7 @@ func syncRepos(m *Manifest, numTasks int) error {
 		for _, p := range m.Projects {
 			job, err := createJob(m, &p)
 			if err != nil {
-				fmt.Printf("Skip the job %s: %s", p.Name, err)
+				slog.Debugf("Skip the job %s: %s", p.Name, err)
 				continue
 			}
 
@@ -367,7 +387,7 @@ func syncRepos(m *Manifest, numTasks int) error {
 	for i := 0; i < len(m.Projects); i++ {
 		j := <-errCh
 		if j.err != nil {
-			fmt.Printf("Job %s failed\n", j.path)
+			slog.Errorf("Job %s failed", j.path)
 		}
 	}
 
