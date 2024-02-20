@@ -1,4 +1,4 @@
-# gorepo -- A stripped-down version of repo tool, written in Go
+# gorepo
 
 The tool is intended for being used in the environment without Internet access,
 where the [repo][1] tool can not be used. The tool aims for downloading [Yocto][2]
