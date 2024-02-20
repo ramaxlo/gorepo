@@ -19,6 +19,7 @@ func main() {
 		Commands: []*cli.Command{
 			&CmdInit,
 			&CmdSync,
+			&CmdStatus,
 		},
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
