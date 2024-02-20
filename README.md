@@ -17,7 +17,7 @@ The tool is under development, and more features will be added.
 ## Installation
 To intall the tool, just run the command:
 
-    $ go install github.com/ramax/gorepo
+    $ go install github.com/ramaxlo/gorepo
 
 [1]: https://android.googlesource.com/tools/repo
 [2]: https://www.yoctoproject.org
