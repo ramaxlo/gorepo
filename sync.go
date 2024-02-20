@@ -21,11 +21,11 @@ import (
 
 var CmdSync = cli.Command{
 	Name:  "sync",
-	Usage: "Clone repositories",
+	Usage: "Update repositories",
 	Flags: []cli.Flag{
 		&cli.IntFlag{
 			Name:    "tasks",
-			Usage:   "How many tasks are created for cloning",
+			Usage:   "How many tasks are created for updating",
 			Value:   1,
 			Aliases: []string{"j"},
 		},

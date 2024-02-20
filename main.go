@@ -15,6 +15,7 @@ func main() {
 	log.SetLevel(log.InfoLevel)
 
 	app := &cli.App{
+		Usage: "A stripped-down version of repo tool, written in Go",
 		Commands: []*cli.Command{
 			&CmdInit,
 			&CmdSync,
