@@ -9,31 +9,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type Manifest struct {
-	XMLName  string    `xml:"manifest"`
-	Defaults Default   `xml:"default"`
-	Remotes  []Remote  `xml:"remote"`
-	Projects []Project `xml:"project"`
-}
-
-type Remote struct {
-	Name  string `xml:"name,attr"`
-	Fetch string `xml:"fetch,attr"`
-}
-
-type Default struct {
-	Revision string   `xml:"revision,attr"`
-	Remote   string   `xml:"remote,attr"`
-	Others   []string `xml:",any,attr"`
-}
-
-type Project struct {
-	Name     string `xml:"name,attr"`
-	Path     string `xml:"path,attr"`
-	Remote   string `xml:"remote,attr"`
-	Revision string `xml:"revision,attr"`
-}
-
 var CmdInit = cli.Command{
 	Name:  "init",
 	Usage: "Initailize repositories",
@@ -132,7 +107,7 @@ func cmdInit(ctx *cli.Context) error {
 	// Check the validity of XML file in manifest repo
 	fileName := ctx.String("manifest")
 	filePath := filepath.Join(ConfDir, "manifests", fileName)
-	m, err := loadManifest(filePath)
+	m, err := LoadManifest(filePath)
 	if err != nil {
 		return fmt.Errorf("Fail to parse manifest: %s", err)
 	}

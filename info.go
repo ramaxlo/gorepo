@@ -34,7 +34,7 @@ func cmdInfo(ctx *cli.Context) error {
 	}
 
 	filePath := filepath.Join(ConfDir, cfg.Manifest.Path, cfg.Manifest.File)
-	m, err := loadManifest(filePath)
+	m, err := LoadManifest(filePath)
 	if err != nil {
 		return fmt.Errorf("Fail to load manifest: %s", err)
 	}
@@ -95,7 +95,7 @@ func repoInfo(t table.Writer, m *Manifest, ilog *log.Entry, showUrl bool) error 
 
 		ilog.Debugf("%s, %s", curRev, manifestRev)
 		if showUrl {
-			_, url, _ := findRemote(m, &p)
+			_, url, _ := m.GetRemote(&p)
 			t.AppendRow(table.Row{
 				p.Path,
 				curRev,
@@ -135,7 +135,7 @@ func getRevs(m *Manifest, p *Project) (curRev, manifestRev string, err error) {
 	}
 
 	curRev = rev.String()
-	manifestRev, err = findRevision(m, p)
+	manifestRev, err = m.GetRevision(p)
 	if err != nil {
 		err = fmt.Errorf("Fail to read revision: %s", err)
 		return

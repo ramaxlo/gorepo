@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +39,7 @@ func cmdSync(ctx *cli.Context) error {
 	}
 
 	filePath := filepath.Join(ConfDir, cfg.Manifest.Path, cfg.Manifest.File)
-	m, err := loadManifest(filePath)
+	m, err := LoadManifest(filePath)
 	if err != nil {
 		return fmt.Errorf("Fail to load manifest: %s", err)
 	}
@@ -292,44 +291,13 @@ func worker(idx int, stopCh <-chan bool, jobCh <-chan syncJob, errCh chan<- sync
 	}
 }
 
-func findRemote(m *Manifest, p *Project) (string, string, error) {
-	remoteName := p.Remote
-	if remoteName == "" {
-		remoteName = m.Defaults.Remote
-	}
-	if remoteName == "" {
-		return "", "", fmt.Errorf("No remote is specified, nor default remote name is found")
-	}
-
-	for _, r := range m.Remotes {
-		if r.Name == remoteName {
-			r, _ := url.JoinPath(r.Fetch, p.Name)
-			return remoteName, r, nil
-		}
-	}
-
-	return "", "", fmt.Errorf("No specified remote is found")
-}
-
-func findRevision(m *Manifest, p *Project) (string, error) {
-	rev := p.Revision
-	if rev == "" {
-		rev = m.Defaults.Revision
-	}
-	if rev == "" {
-		return "", fmt.Errorf("No revision is specified, nor default revision is found")
-	}
-
-	return rev, nil
-}
-
 func createJob(m *Manifest, p *Project) (syncJob, error) {
-	name, url, err := findRemote(m, p)
+	name, url, err := m.GetRemote(p)
 	if err != nil {
 		return syncJob{}, err
 	}
 
-	rev, err := findRevision(m, p)
+	rev, err := m.GetRevision(p)
 	if err != nil {
 		return syncJob{}, err
 	}

@@ -25,7 +25,7 @@ func cmdStatus(ctx *cli.Context) error {
 	}
 
 	filePath := filepath.Join(ConfDir, cfg.Manifest.Path, cfg.Manifest.File)
-	m, err := loadManifest(filePath)
+	m, err := LoadManifest(filePath)
 	if err != nil {
 		return fmt.Errorf("Fail to load manifest: %s", err)
 	}
