@@ -124,7 +124,7 @@ func pullUpdate(path string, j syncJob) error {
 			newBranchNeeded = true
 		}
 	} else {
-		jlog.Errorf("%s", err)
+		jlog.Debugf("%s", err)
 		newBranchNeeded = true
 	}
 
@@ -161,7 +161,7 @@ func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Has
 	var b []byte
 
 	if b, err = hex.DecodeString(revStr); err == nil {
-		if len(b) == hash.HexSize {
+		if len(b) == hash.Size {
 			h = plumbing.NewHash(revStr)
 		} else {
 			return plumbing.Hash{}, fmt.Errorf("Invalid hash format: %s", revStr)
