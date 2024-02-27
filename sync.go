@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -13,7 +12,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/hash"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
@@ -155,36 +153,7 @@ func pullUpdate(path string, j syncJob) error {
 }
 
 func parseRevision(repo *git.Repository, revStr string, j syncJob) (plumbing.Hash, error) {
-	var h plumbing.Hash
-	var err error
-	var b []byte
-
-	if b, err = hex.DecodeString(revStr); err == nil {
-		if len(b) == hash.Size {
-			h = plumbing.NewHash(revStr)
-		} else {
-			return plumbing.Hash{}, fmt.Errorf("Invalid hash format: %s", revStr)
-		}
-	} else if strings.HasPrefix(revStr, "refs/tags") {
-		tmp, err := repo.ResolveRevision(plumbing.Revision(revStr))
-		if err != nil {
-			return plumbing.Hash{}, fmt.Errorf("Invalid tag: %s", revStr)
-		}
-		h = *tmp
-	} else {
-		// DEFAULT CASE
-		// If all rules are not matched, then we assume the string to be a branch
-		// name of a remote.
-		fullRevStr := fmt.Sprintf("refs/remotes/%s/%s", j.remote, revStr)
-		//fmt.Printf("ref: %s\n", fullRevStr)
-		tmp, err := repo.ResolveRevision(plumbing.Revision(fullRevStr))
-		if err != nil {
-			return plumbing.Hash{}, fmt.Errorf("Invalid remote branch: %s", fullRevStr)
-		}
-		h = *tmp
-	}
-
-	return h, nil
+	return resolveRevision(repo, j.remote, revStr)
 }
 
 func cloneRepo(path string, j syncJob) error {
