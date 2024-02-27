@@ -87,7 +87,7 @@ func repoInfo(t table.Writer, m *Manifest, ilog *log.Entry, showUrl bool) error 
 		plog := ilog.WithFields(log.Fields{
 			"project": p.Path,
 		})
-		curRev, manifestRev, err := getRevs(m, &p)
+		curRev, manifestRev, manifestHash, err := getRevs(m, &p)
 		if err != nil {
 			plog.Errorf("Fail to get rev: %s", err)
 			continue
@@ -99,14 +99,14 @@ func repoInfo(t table.Writer, m *Manifest, ilog *log.Entry, showUrl bool) error 
 			t.AppendRow(table.Row{
 				p.Path,
 				curRev,
-				manifestRev,
+				revPrettyPrint(manifestRev, manifestHash),
 				url,
 			})
 		} else {
 			t.AppendRow(table.Row{
 				p.Path,
 				curRev,
-				manifestRev,
+				revPrettyPrint(manifestRev, manifestHash),
 			})
 		}
 		//t.AppendSeparator()
@@ -118,7 +118,15 @@ func repoInfo(t table.Writer, m *Manifest, ilog *log.Entry, showUrl bool) error 
 	return nil
 }
 
-func getRevs(m *Manifest, p *Project) (curRev, manifestRev string, err error) {
+func revPrettyPrint(rev, hash string) string {
+	if rev == hash {
+		return rev
+	}
+
+	return fmt.Sprintf("%s (%s)", hash, rev)
+}
+
+func getRevs(m *Manifest, p *Project) (curRev, manifestRev, manifestHash string, err error) {
 	relPath := p.Path
 	repoPath := filepath.Join(ProjectRoot, relPath)
 
@@ -128,7 +136,7 @@ func getRevs(m *Manifest, p *Project) (curRev, manifestRev string, err error) {
 		return
 	}
 
-	rev, err := repo.ResolveRevision(plumbing.Revision("refs/heads/manifest-rev"))
+	rev, err := repo.ResolveRevision(plumbing.Revision("HEAD"))
 	if err != nil {
 		err = fmt.Errorf("Fail to resolve revision: %s", err)
 		return
@@ -140,6 +148,15 @@ func getRevs(m *Manifest, p *Project) (curRev, manifestRev string, err error) {
 		err = fmt.Errorf("Fail to read revision: %s", err)
 		return
 	}
+
+	remote, _, _ := m.GetRemote(p)
+	tmp, err := resolveRevision(repo, remote, manifestRev)
+	if err != nil {
+		err = fmt.Errorf("Fail to resolve revision: %s", err)
+		return
+	}
+
+	manifestHash = tmp.String()
 
 	return
 }
