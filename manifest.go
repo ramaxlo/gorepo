@@ -26,10 +26,16 @@ type Default struct {
 }
 
 type Project struct {
-	Name     string `xml:"name,attr"`
-	Path     string `xml:"path,attr"`
-	Remote   string `xml:"remote,attr"`
-	Revision string `xml:"revision,attr"`
+	Name      string     `xml:"name,attr"`
+	Path      string     `xml:"path,attr"`
+	Remote    string     `xml:"remote,attr"`
+	Revision  string     `xml:"revision,attr"`
+	Copyfiles []Copyfile `xml:"copyfile"`
+}
+
+type Copyfile struct {
+	Src  string `xml:"src,attr"`
+	Dest string `xml:"dest,attr"`
 }
 
 func LoadManifest(filePath string) (manifest *Manifest, err error) {

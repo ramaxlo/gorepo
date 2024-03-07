@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,12 +53,13 @@ func cmdSync(ctx *cli.Context) error {
 }
 
 type syncJob struct {
-	repo     string
-	revision string
-	path     string
-	remote   string
-	err      error
-	log      *log.Entry
+	repo      string
+	revision  string
+	path      string
+	remote    string
+	err       error
+	log       *log.Entry
+	copyFiles []Copyfile
 }
 
 func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) {
@@ -211,16 +213,105 @@ func cloneRepo(path string, j syncJob) error {
 	return nil
 }
 
+func doCopy(src, dest string) error {
+	sf, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("Fail to open file: %s", err)
+	}
+	defer sf.Close()
+
+	df, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("Fail to create file: %s", err)
+	}
+	defer df.Close()
+
+	_, err = io.Copy(df, sf)
+	if err != nil {
+		return fmt.Errorf("Fail to copy: %s", err)
+	}
+
+	return nil
+}
+
+func isFile(p string) bool {
+	fi, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+
+	if !fi.Mode().IsRegular() {
+		return false
+	}
+
+	return true
+}
+
+func doCopyfile(repoPath string, c Copyfile, clog *log.Entry) error {
+	if c.Src == "" {
+		return fmt.Errorf("copyfile src is empty")
+	}
+
+	if c.Dest == "" {
+		return fmt.Errorf("copyfile dest is empty")
+	}
+
+	if filepath.IsAbs(c.Src) {
+		return fmt.Errorf("copyfile src is not relative path: %s", c.Src)
+	}
+
+	src := filepath.Join(repoPath, c.Src)
+	src = filepath.Clean(src)
+	if !isFile(src) {
+		return fmt.Errorf("copyfile src is not a file: %s", c.Src)
+	}
+	if !strings.HasPrefix(src, repoPath) {
+		return fmt.Errorf("copyfile src (%s) is outside of the repo: %s", c.Src, repoPath)
+	}
+
+	if filepath.IsAbs(c.Dest) {
+		return fmt.Errorf("copyfile dest is not relative path: %s", c.Dest)
+	}
+
+	dest := filepath.Join(ProjectRoot, c.Dest)
+	dest = filepath.Clean(dest)
+	if !strings.HasPrefix(dest, ProjectRoot) {
+		return fmt.Errorf("copyfile dest (%s) is outside of the project root", c.Dest)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+
+	clog.Debugf("Copyfile %s -> %s", src, dest)
+	if err := doCopy(src, dest); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func doJob(j syncJob) error {
 	repoPath := j.path
 	if !filepath.IsAbs(repoPath) {
 		repoPath = filepath.Join(ProjectRoot, repoPath)
 	}
 
+	var err error
 	if isDir(repoPath) {
-		return pullUpdate(repoPath, j)
+		err = pullUpdate(repoPath, j)
 	} else {
-		return cloneRepo(repoPath, j)
+		err = cloneRepo(repoPath, j)
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, c := range j.copyFiles {
+		jlog := j.log
+		if err := doCopyfile(repoPath, c, jlog); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -272,10 +363,11 @@ func createJob(m *Manifest, p *Project) (syncJob, error) {
 	}
 
 	tmp := syncJob{
-		repo:     url,
-		revision: rev,
-		path:     p.Path,
-		remote:   name,
+		repo:      url,
+		revision:  rev,
+		path:      p.Path,
+		remote:    name,
+		copyFiles: p.Copyfiles,
 	}
 
 	return tmp, nil
