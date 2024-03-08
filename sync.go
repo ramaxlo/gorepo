@@ -60,6 +60,7 @@ type syncJob struct {
 	err       error
 	log       *log.Entry
 	copyFiles []Copyfile
+	linkFiles []Linkfile
 }
 
 func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) {
@@ -247,6 +248,56 @@ func isFile(p string) bool {
 	return true
 }
 
+func doLinkfile(repoPath string, l Linkfile, llog *log.Entry) error {
+	if l.Src == "" {
+		return fmt.Errorf("linkfile src is empty")
+	}
+
+	if l.Dest == "" {
+		return fmt.Errorf("linkfile dest is empty")
+	}
+
+	if filepath.IsAbs(l.Src) {
+		return fmt.Errorf("linkfile src is not relative path: %s", l.Src)
+	}
+
+	src := filepath.Join(repoPath, l.Src)
+	src = filepath.Clean(src)
+	if !strings.HasPrefix(src, repoPath) {
+		return fmt.Errorf("linkfile src (%s) is outside the repo: %s", l.Src, repoPath)
+	}
+
+	if filepath.IsAbs(l.Dest) {
+		return fmt.Errorf("linkfile dest is not relative path: %s", l.Dest)
+	}
+
+	dest := filepath.Join(ProjectRoot, l.Dest)
+	dest = filepath.Clean(dest)
+	if !strings.HasPrefix(dest, ProjectRoot) {
+		return fmt.Errorf("linkfile dest (%s) is outside the project root", l.Dest)
+	}
+
+	if _, err := os.Stat(dest); err == nil {
+		llog.Debugf("linkfile dest (%s) exists. Skip.", dest)
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return err
+	}
+
+	relSrc, err := filepath.Rel(ProjectRoot, src)
+	if err != nil {
+		return err
+	}
+	llog.Debugf("Linkfile %s -> %s", relSrc, dest)
+	if err := os.Symlink(relSrc, dest); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func doCopyfile(repoPath string, c Copyfile, clog *log.Entry) error {
 	if c.Src == "" {
 		return fmt.Errorf("copyfile src is empty")
@@ -314,6 +365,13 @@ func doJob(j syncJob) error {
 		}
 	}
 
+	for _, l := range j.linkFiles {
+		jlog := j.log
+		if err := doLinkfile(repoPath, l, jlog); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -368,6 +426,7 @@ func createJob(m *Manifest, p *Project) (syncJob, error) {
 		path:      p.Path,
 		remote:    name,
 		copyFiles: p.Copyfiles,
+		linkFiles: p.Linkfiles,
 	}
 
 	return tmp, nil

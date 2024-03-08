@@ -31,6 +31,12 @@ type Project struct {
 	Remote    string     `xml:"remote,attr"`
 	Revision  string     `xml:"revision,attr"`
 	Copyfiles []Copyfile `xml:"copyfile"`
+	Linkfiles []Linkfile `xml:"linkfile"`
+}
+
+type Linkfile struct {
+	Src  string `xml:"src,attr"`
+	Dest string `xml:"dest,attr"`
 }
 
 type Copyfile struct {
