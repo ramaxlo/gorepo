@@ -1,11 +1,49 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
+	"runtime/debug"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
+
+func cmdVersion(ctx *cli.Context) error {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return fmt.Errorf("Fail to read build info")
+	}
+
+	var rev string
+	var isDirty bool
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			if s.Value == "true" {
+				isDirty = true
+			}
+		}
+	}
+	buf := bytes.NewBuffer(nil)
+	fmt.Fprintf(buf, "%s", rev[:8])
+	if isDirty {
+		fmt.Fprintf(buf, "-dirty")
+	}
+
+	fmt.Printf("%s\n", buf.String())
+
+	return nil
+}
+
+var CmdVersion = cli.Command{
+	Name:   "version",
+	Usage:  "Display version",
+	Action: cmdVersion,
+}
 
 func main() {
 	log.SetFormatter(&log.TextFormatter{
@@ -21,6 +59,7 @@ func main() {
 			&CmdSync,
 			&CmdStatus,
 			&CmdInfo,
+			&CmdVersion,
 		},
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
