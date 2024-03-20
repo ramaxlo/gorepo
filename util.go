@@ -10,14 +10,35 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/hash"
+	log "github.com/sirupsen/logrus"
 )
 
 var ProjectRoot string
 var ConfDir string
 
 func init() {
-	ProjectRoot, _ = os.Getwd()
+	var err error
+	if ProjectRoot, err = findProjectRoot(); err != nil {
+		log.Fatalf("%s", err)
+	}
 	ConfDir = filepath.Join(ProjectRoot, ".gorepo")
+}
+
+func findProjectRoot() (prjRoot string, err error) {
+	dir, _ := os.Getwd()
+
+	for dir != "/" {
+		tmp := filepath.Join(dir, ".gorepo")
+		if isDir(tmp) {
+			prjRoot = dir
+			return
+		}
+
+		dir = filepath.Clean(filepath.Join(dir, ".."))
+	}
+
+	err = fmt.Errorf("No project root is found")
+	return
 }
 
 func resolveRevision(repo *git.Repository, remote, revStr string) (out plumbing.Hash, err error) {
