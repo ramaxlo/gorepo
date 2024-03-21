@@ -13,6 +13,10 @@ var CmdStatus = cli.Command{
 	Name:   "status",
 	Usage:  "List status of repositories",
 	Action: cmdStatus,
+	Before: func(c *cli.Context) error {
+		SetProjectRoot(false)
+		return nil
+	},
 }
 
 func cmdStatus(ctx *cli.Context) error {

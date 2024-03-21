@@ -22,6 +22,10 @@ var CmdInfo = cli.Command{
 			Usage: "Print URLs of repositories",
 		},
 	},
+	Before: func(c *cli.Context) error {
+		SetProjectRoot(false)
+		return nil
+	},
 }
 
 func cmdInfo(ctx *cli.Context) error {

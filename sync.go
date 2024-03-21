@@ -29,6 +29,10 @@ var CmdSync = cli.Command{
 		},
 	},
 	Action: cmdSync,
+	Before: func(c *cli.Context) error {
+		SetProjectRoot(false)
+		return nil
+	},
 }
 
 func cmdSync(ctx *cli.Context) error {

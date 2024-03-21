@@ -41,6 +41,10 @@ var CmdInit = cli.Command{
 		},
 	},
 	Action: cmdInit,
+	Before: func(c *cli.Context) error {
+		SetProjectRoot(true)
+		return nil
+	},
 }
 
 func dumpManifest(m *Manifest) {

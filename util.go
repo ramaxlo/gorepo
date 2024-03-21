@@ -16,10 +16,14 @@ import (
 var ProjectRoot string
 var ConfDir string
 
-func init() {
-	var err error
-	if ProjectRoot, err = findProjectRoot(); err != nil {
-		log.Fatalf("%s", err)
+func SetProjectRoot(isInit bool) {
+	if isInit {
+		ProjectRoot, _ = os.Getwd()
+	} else {
+		var err error
+		if ProjectRoot, err = findProjectRoot(); err != nil {
+			log.Fatalf("%s", err)
+		}
 	}
 	ConfDir = filepath.Join(ProjectRoot, ".gorepo")
 }
