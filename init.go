@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/urfave/cli/v2"
 )
 
@@ -89,12 +90,11 @@ func initManifest(url, branch string, forceDelete bool) error {
 		}
 	}
 
-	cmd := exec.Command("git", "clone", "-b", branch, url, manifestDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = append(cmd.Env, "LANG=en")
-
-	err := cmd.Run()
+	_, err := git.PlainClone(manifestDir, false, &git.CloneOptions{
+		URL:           url,
+		ReferenceName: plumbing.ReferenceName(branch),
+		Progress:      os.Stdout,
+	})
 	if err != nil {
 		return fmt.Errorf("Fail to clone manifest: %s", err)
 	}
