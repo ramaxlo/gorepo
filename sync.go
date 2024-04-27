@@ -22,10 +22,11 @@ var CmdSync = cli.Command{
 	Usage: "Update repositories",
 	Flags: []cli.Flag{
 		&cli.IntFlag{
-			Name:    "tasks",
-			Usage:   "How many tasks are created for updating",
-			Value:   1,
-			Aliases: []string{"j"},
+			Name:        "tasks",
+			Usage:       "How many tasks are created for updating",
+			Value:       0,
+			DefaultText: "1",
+			Aliases:     []string{"j"},
 		},
 	},
 	Action: cmdSync,
@@ -48,6 +49,13 @@ func cmdSync(ctx *cli.Context) error {
 	}
 
 	n := ctx.Int("tasks")
+	// If -j option is not specified, look for 'sync-j' attr in manifest
+	if n <= 0 {
+		n, _ = m.GetSyncJ()
+		if n <= 0 {
+			n = 1
+		}
+	}
 	err = syncRepos(m, n)
 	if err != nil {
 		return fmt.Errorf("Fail to init repos: %s", err)

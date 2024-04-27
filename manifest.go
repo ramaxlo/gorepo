@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 )
 
 type Manifest struct {
@@ -22,6 +23,7 @@ type Remote struct {
 type Default struct {
 	Revision string   `xml:"revision,attr"`
 	Remote   string   `xml:"remote,attr"`
+	SyncJ    string   `xml:"sync-j,attr"`
 	Others   []string `xml:",any,attr"`
 }
 
@@ -64,6 +66,20 @@ func LoadManifest(filePath string) (manifest *Manifest, err error) {
 	manifest = &m
 
 	return
+}
+
+func (m *Manifest) GetSyncJ() (int, error) {
+	str := m.Defaults.SyncJ
+	if str == "" {
+		return 0, fmt.Errorf("No sync-j attribute is found")
+	}
+
+	j, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, err
+	}
+
+	return j, nil
 }
 
 func (m *Manifest) GetRevision(p *Project) (string, error) {
