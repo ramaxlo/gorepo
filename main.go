@@ -29,9 +29,13 @@ func cmdVersion(ctx *cli.Context) error {
 		}
 	}
 	buf := bytes.NewBuffer(nil)
-	fmt.Fprintf(buf, "%s", rev[:8])
-	if isDirty {
-		fmt.Fprintf(buf, "-dirty")
+	if rev != "" {
+		fmt.Fprintf(buf, "%s", rev[:8])
+		if isDirty {
+			fmt.Fprintf(buf, "-dirty")
+		}
+	} else {
+		fmt.Fprintf(buf, "NoVersion")
 	}
 
 	fmt.Printf("%s\n", buf.String())
