@@ -122,8 +122,9 @@ func cmdInit(ctx *cli.Context) error {
 
 	cfg := Config{
 		Manifest: ManifestInfo{
-			Path: "manifests",
-			File: fileName,
+			Path:   "manifests",
+			File:   fileName,
+			Branch: ctx.String("branch"),
 		},
 	}
 	err = SaveConfig(&cfg)

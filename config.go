@@ -13,8 +13,9 @@ type Config struct {
 }
 
 type ManifestInfo struct {
-	Path string `toml:"path"`
-	File string `toml:"file"`
+	Path   string `toml:"path"`
+	File   string `toml:"file"`
+	Branch string `toml:"branch"`
 }
 
 func SaveConfig(cfg *Config) error {
