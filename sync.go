@@ -36,10 +36,73 @@ var CmdSync = cli.Command{
 	},
 }
 
+func syncManifest(cfg *Config) error {
+	mlog := log.WithFields(log.Fields{
+		"cmd":   "sync",
+		"stage": "manifest-sync",
+	})
+	repoPath := filepath.Join(ConfDir, cfg.Manifest.Path)
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("Fail to open manifest repo: %s", err)
+	}
+
+	err = repo.Fetch(&git.FetchOptions{
+		Progress: os.Stdout,
+	})
+	if err != nil {
+		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			return fmt.Errorf("Fail to fetch update: %s", err)
+		} else {
+			mlog.Info("Manifest up-to-date")
+		}
+	}
+
+	newBranchNeeded := false
+	remoteHash, err := resolveRevision(repo, "origin", cfg.Manifest.Branch)
+	if err != nil {
+		return fmt.Errorf("Fail to resolve revision: %s", err)
+	}
+
+	localRef, err := findBranch(repo, cfg.Manifest.Branch)
+	if err == nil {
+		mlog.Debugf("localRef: %s, remoteHash: %s", localRef.Hash().String(), remoteHash.String())
+		if localRef.Hash().String() != remoteHash.String() {
+			mlog.Debug("Remove local branch")
+			repo.Storer.RemoveReference(localRef.Name())
+			newBranchNeeded = true
+		}
+	} else {
+		mlog.Debugf("%s", err)
+		newBranchNeeded = true
+	}
+
+	if newBranchNeeded {
+		localBranch := fmt.Sprintf("refs/heads/%s", cfg.Manifest.Branch)
+		w, _ := repo.Worktree()
+
+		err = w.Checkout(&git.CheckoutOptions{
+			Hash:   remoteHash,
+			Branch: plumbing.ReferenceName(localBranch),
+			Create: true,
+		})
+		if err != nil {
+			return fmt.Errorf("Fail to checkout worktree: %s", err)
+		}
+	}
+
+	return nil
+}
+
 func cmdSync(ctx *cli.Context) error {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return fmt.Errorf("Fail to load config: %s", err)
+	}
+
+	err = syncManifest(cfg)
+	if err != nil {
+		return fmt.Errorf("Fail to sync manifest: %s", err)
 	}
 
 	filePath := filepath.Join(ConfDir, cfg.Manifest.Path, cfg.Manifest.File)
@@ -79,13 +142,14 @@ func findBranch(repo *git.Repository, name string) (*plumbing.Reference, error) 
 	refs, _ := repo.References()
 	var found *plumbing.Reference
 
+	branchName := fmt.Sprintf("refs/heads/%s", name)
 	refs.ForEach(func(ref *plumbing.Reference) error {
 		if ref.Type() != plumbing.HashReference {
 			return nil
 		}
 
 		refName := ref.Name()
-		if strings.HasSuffix(string(refName), name) {
+		if string(refName) == branchName {
 			found = ref
 			return nil
 		}
