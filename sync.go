@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +28,10 @@ var CmdSync = cli.Command{
 			Value:       0,
 			DefaultText: "1",
 			Aliases:     []string{"j"},
+		},
+		&cli.BoolFlag{
+			Name:  "force-sync",
+			Usage: "Force updating repos",
 		},
 	},
 	Action: cmdSync,
@@ -119,7 +124,9 @@ func cmdSync(ctx *cli.Context) error {
 			n = 1
 		}
 	}
-	err = syncRepos(m, n)
+
+	force := ctx.Bool("force-sync")
+	err = syncRepos(m, n, force)
 	if err != nil {
 		return fmt.Errorf("Fail to init repos: %s", err)
 	}
@@ -134,6 +141,7 @@ type syncJob struct {
 	remote    string
 	err       error
 	log       *log.Entry
+	force     bool
 	copyFiles []Copyfile
 	linkFiles []Linkfile
 }
@@ -418,7 +426,47 @@ func doCopyfile(repoPath string, c Copyfile, clog *log.Entry) error {
 	return nil
 }
 
+func isRemoteDifferent(repoPath string, job syncJob) bool {
+	jlog := job.log
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		jlog.Errorf("Fail to open git repo: %s", err)
+		return false
+	}
+
+	remotes, err := repo.Remotes()
+	if err != nil {
+		jlog.Errorf("Can not read the remotes: %s", err)
+		return false
+	}
+
+	isDifferent := true
+	for _, r := range remotes {
+		remoteURL := r.Config().URLs[0]
+		jobURL := job.repo
+
+		jlog.Debugf("remoteURL: %s", remoteURL)
+		jlog.Debugf("jobURL: %s", jobURL)
+		if remoteURL == jobURL {
+			isDifferent = false
+		}
+	}
+
+	return isDifferent
+}
+
+func reCreateDir(repoPath string) (err error) {
+	err = os.RemoveAll(repoPath)
+	if err != nil {
+		return
+	}
+	err = os.MkdirAll(repoPath, 0755)
+
+	return
+}
+
 func doJob(j syncJob) error {
+	jlog := j.log
 	repoPath := j.path
 	if !filepath.IsAbs(repoPath) {
 		repoPath = filepath.Join(ProjectRoot, repoPath)
@@ -426,7 +474,24 @@ func doJob(j syncJob) error {
 
 	var err error
 	if isDir(repoPath) {
-		err = pullUpdate(repoPath, j)
+		if isRemoteDifferent(repoPath, j) {
+			if !j.force {
+				buf := bytes.NewBuffer(nil)
+				fmt.Fprintf(buf, "The repo %s has different remote. ", j.path)
+				fmt.Fprintf(buf, "Use --force-sync to force the updating.")
+
+				return errors.New(buf.String())
+			}
+
+			jlog.Infof("The repo %s has different remote. Force update.", j.path)
+			err = reCreateDir(repoPath)
+			if err != nil {
+				return err
+			}
+			err = cloneRepo(repoPath, j)
+		} else {
+			err = pullUpdate(repoPath, j)
+		}
 	} else {
 		err = cloneRepo(repoPath, j)
 	}
@@ -435,14 +500,12 @@ func doJob(j syncJob) error {
 	}
 
 	for _, c := range j.copyFiles {
-		jlog := j.log
 		if err := doCopyfile(repoPath, c, jlog); err != nil {
 			return err
 		}
 	}
 
 	for _, l := range j.linkFiles {
-		jlog := j.log
 		if err := doLinkfile(repoPath, l, jlog); err != nil {
 			return err
 		}
@@ -519,7 +582,7 @@ func setupDirAll(j syncJob) {
 	}
 }
 
-func syncRepos(m *Manifest, numTasks int) error {
+func syncRepos(m *Manifest, numTasks int, force bool) error {
 	slog := log.WithFields(log.Fields{
 		"cmd": "sync",
 	})
@@ -543,19 +606,26 @@ func syncRepos(m *Manifest, numTasks int) error {
 			}
 
 			setupDirAll(job)
+			job.force = force
 			jobCh <- job
 		}
 	}()
 
 	// Fetch result of processing
+	hasError := false
 	for i := 0; i < len(m.Projects); i++ {
 		j := <-errCh
 		if j.err != nil {
 			slog.Errorf("Job %s failed", j.path)
+			hasError = true
 		}
 	}
 
 	close(stopCh)
+
+	if hasError {
+		return fmt.Errorf("Error happens")
+	}
 
 	return nil
 }
